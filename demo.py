@@ -1,6 +1,6 @@
 import argparse
-#import better_exceptions
-#from pathlib import Path
+import better_exceptions
+from pathlib import Path
 from contextlib import contextmanager
 import urllib.request
 import numpy as np

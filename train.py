@@ -208,7 +208,6 @@ def main():
 
         if args.tensorboard is not None:
             train_writer.add_scalar("loss", train_loss, epoch)
-            train_writer.add_scalar("acc", train_acc, epoch)
             val_writer.add_scalar("loss", val_loss, epoch)
             val_writer.add_scalar("acc", val_acc, epoch)
             val_writer.add_scalar("mae", val_mae, epoch)
