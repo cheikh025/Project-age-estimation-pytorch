@@ -13,6 +13,8 @@ from model import get_model
 from dataset import FaceDataset
 from defaults import _C as cfg
 from train import validate
+from defaults import _C as cfg
+import torchvision.models as models
 
 
 def get_args():

@@ -19,6 +19,7 @@ import pretrainedmodels.utils
 from model import get_model
 from dataset import FaceDataset
 from defaults import _C as cfg
+import torchvision.models as models
 
 
 def get_args():
@@ -37,6 +38,7 @@ def get_args():
                         help="Modify config options using the command-line")
     args = parser.parse_args()
     return args
+
 
 
 class AverageMeter(object):
@@ -65,19 +67,18 @@ def train(train_loader, model, criterion, optimizer, epoch, device):
 
             # compute output
             outputs = model(x)
-
+            preds = F.softmax(outputs, dim=-1)
+            ages = torch.from_numpy(np.arange(0, 101)).to(device)
+            ages_preds = (preds * ages).sum(axis=-1).to(device)
             # calc loss
-            loss = criterion(outputs, y)
+            loss = criterion(ages_preds, y)
             cur_loss = loss.item()
 
-            # calc accuracy
-            _, predicted = outputs.max(1)
-            correct_num = predicted.eq(y).sum().item()
 
             # measure accuracy and record loss
             sample_num = x.size(0)
             loss_monitor.update(cur_loss, sample_num)
-            accuracy_monitor.update(correct_num, sample_num)
+            
 
             # compute gradient and do SGD step
             optimizer.zero_grad()
@@ -85,9 +86,9 @@ def train(train_loader, model, criterion, optimizer, epoch, device):
             optimizer.step()
 
             _tqdm.set_postfix(OrderedDict(stage="train", epoch=epoch, loss=loss_monitor.avg),
-                              acc=accuracy_monitor.avg, correct=correct_num, sample_num=sample_num)
+                             sample_num=sample_num)
 
-    return loss_monitor.avg, accuracy_monitor.avg
+    return loss_monitor.avg
 
 
 def validate(validate_loader, model, criterion, epoch, device):
@@ -111,7 +112,10 @@ def validate(validate_loader, model, criterion, epoch, device):
                 # valid for validation, not used for test
                 if criterion is not None:
                     # calc loss
-                    loss = criterion(outputs, y)
+                    predictions = F.softmax(outputs, dim=-1)
+                    ages = torch.from_numpy(np.arange(0, 101)).to(device)
+                    ages_preds = (predictions * ages).sum(axis=-1).to(device)
+                    loss = criterion(ages_preds, y)
                     cur_loss = loss.item()
 
                     # calc accuracy
@@ -138,9 +142,6 @@ def validate(validate_loader, model, criterion, epoch, device):
 def main():
     args = get_args()
 
-    if args.opts:
-        cfg.merge_from_list(args.opts)
-
     cfg.freeze()
     start_epoch = 0
     checkpoint_dir = Path(args.checkpoint)
@@ -157,7 +158,7 @@ def main():
     else:
         optimizer = torch.optim.Adam(model.parameters(), lr=cfg.TRAIN.LR)
 
-    device = "cuda" if torch.cuda.is_available() else "cpu"
+    device =  "cuda" if torch.cuda.is_available() else "cpu"
     model = model.to(device)
 
     # optionally resume from a checkpoint
@@ -175,17 +176,14 @@ def main():
         else:
             print("=> no checkpoint found at '{}'".format(resume_path))
 
-    if args.multi_gpu:
-        model = nn.DataParallel(model)
 
     if device == "cuda":
         cudnn.benchmark = True
 
-    criterion = nn.CrossEntropyLoss().to(device)
-    train_dataset = FaceDataset(args.data_dir, "train", img_size=cfg.MODEL.IMG_SIZE, augment=True,
+    criterion = nn.L1Loss().to(device)#nn.CrossEntropyLoss().to(device)
+    train_dataset = FaceDataset(args.data_dir, "train", img_size=cfg.MODEL.IMG_SIZE, augment=False,
                                 age_stddev=cfg.TRAIN.AGE_STDDEV)
-    train_loader = DataLoader(train_dataset, batch_size=cfg.TRAIN.BATCH_SIZE, shuffle=True,
-                              num_workers=cfg.TRAIN.WORKERS, drop_last=True)
+    train_loader = DataLoader(train_dataset, batch_size=cfg.TRAIN.BATCH_SIZE, shuffle=True, drop_last=True)
 
     val_dataset = FaceDataset(args.data_dir, "valid", img_size=cfg.MODEL.IMG_SIZE, augment=False)
     val_loader = DataLoader(val_dataset, batch_size=cfg.TEST.BATCH_SIZE, shuffle=False,
@@ -203,7 +201,7 @@ def main():
 
     for epoch in range(start_epoch, cfg.TRAIN.EPOCHS):
         # train
-        train_loss, train_acc = train(train_loader, model, criterion, optimizer, epoch, device)
+        train_loss = train(train_loader, model, criterion, optimizer, epoch, device)
 
         # validate
         val_loss, val_acc, val_mae = validate(val_loader, model, criterion, epoch, device)
@@ -238,7 +236,6 @@ def main():
     print("=> training finished")
     print(f"additional opts: {args.opts}")
     print(f"best val mae: {best_val_mae:.3f}")
-
 
 if __name__ == '__main__':
     main()

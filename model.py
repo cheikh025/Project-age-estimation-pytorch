@@ -1,13 +1,13 @@
 import torch.nn as nn
 import pretrainedmodels
 import pretrainedmodels.utils
+import torchvision.models as models
 
 
 def get_model(model_name="se_resnext50_32x4d", num_classes=101, pretrained="imagenet"):
-    model = pretrainedmodels.__dict__[model_name](pretrained=pretrained)
-    dim_feats = model.last_linear.in_features
-    model.last_linear = nn.Linear(dim_feats, num_classes)
-    model.avg_pool = nn.AdaptiveAvgPool2d(1)
+    model = models.resnext50_32x4d(pretrained=pretrained)
+    input_size = model.fc.in_features
+    model.fc = nn.Linear(in_features=input_size, out_features=num_classes)
     return model
 
 
